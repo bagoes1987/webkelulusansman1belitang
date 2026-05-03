@@ -9,7 +9,7 @@ import {
 import * as XLSX from 'xlsx';
 import Input from '../components/Input';
 import Button from '../components/Button';
-import { supabase } from '../lib/supabase';
+import studentsData from '../data/students.json';
 
 export default function Admin() {
   const [password, setPassword] = useState('');
@@ -17,10 +17,10 @@ export default function Admin() {
   const [authLoading, setAuthLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Hash SHA-256 dari password admin (password asli TIDAK tersimpan di kode)
+  // Hash SHA-256 dari password admin
   const ADMIN_HASH = 'dc258833711f6f4da27982d9904bd7d22afff49835a60e27321edc59480ca563';
 
-  // Fungsi hash SHA-256 menggunakan Web Crypto API
+  // Fungsi hash SHA-256
   const hashPassword = async (pwd) => {
     const encoder = new TextEncoder();
     const data = encoder.encode(pwd);
@@ -30,7 +30,7 @@ export default function Admin() {
   };
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState('students'); // 'students' or 'settings'
+  const [activeTab, setActiveTab] = useState('students');
 
   // Settings State
   const [datetime, setDatetime] = useState('');
@@ -54,21 +54,11 @@ export default function Admin() {
 
   // Form State
   const [formData, setFormData] = useState({
-    nisn: '',
-    dob: '',
-    name: '',
-    kelas: '',
-    gender: 'L',
-    nis: '',
-    pob: '',
-    status: 'LULUS',
-    notes: 'untuk pengambilan SKHU menunggu informasi dari TU SMAN 1 Belitang.'
+    nisn: '', dob: '', name: '', kelas: '', gender: 'L', nis: '', pob: '', status: 'LULUS', notes: ''
   });
 
-  // UI Helpers
   const formatDateDisplay = (dateStr) => {
     if (!dateStr) return '-';
-    // Handle YYYY-MM-DD -> DD/MM/YYYY
     const parts = dateStr.split('-');
     if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
     return dateStr;
@@ -82,28 +72,20 @@ export default function Admin() {
 
   const filteredStudents = students.filter(s => {
     const matchClass = selectedClass === 'SEMUA' || s.kelas === selectedClass;
-    const matchSearch = String(s.name).toLowerCase().includes(searchTerm.toLowerCase()) || 
-                       String(s.nisn).includes(searchTerm);
+    const matchSearch = String(s.name).toLowerCase().includes(searchTerm.toLowerCase()) || String(s.nisn).includes(searchTerm);
     return matchClass && matchSearch;
   });
 
   const totalPages = Math.ceil(filteredStudents.length / pageSize);
   const paginatedStudents = filteredStudents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Reset pagination when filter changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedClass, searchTerm, pageSize]);
+  useEffect(() => { setCurrentPage(1); }, [selectedClass, searchTerm, pageSize]);
 
-  // --- Responsive State ---
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  // Cek sesi admin dari sessionStorage saat pertama kali load
   useEffect(() => {
     const session = sessionStorage.getItem('admin_session');
-    if (session === ADMIN_HASH) {
-      setIsAuthenticated(true);
-    }
+    if (session === ADMIN_HASH) setIsAuthenticated(true);
     setAuthLoading(false);
   }, []);
 
@@ -111,49 +93,52 @@ export default function Admin() {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     
-    const fetchSettings = async () => {
-      const { data } = await supabase.from('students').select('*').eq('nisn', '__CONFIG_TIMER__').single();
-      if (data && data.notes) {
-        setDatetime(data.notes);
+    const fetchSettings = () => {
+      const configRow = studentsData.find(s => s.nisn === '__CONFIG_TIMER__');
+      if (configRow && configRow.notes) {
+        setDatetime(configRow.notes);
       } else {
         const storedTime = localStorage.getItem('announcementTime');
         if (storedTime) setDatetime(storedTime);
       }
 
-      const { data: configMsg } = await supabase.from('students').select('*').eq('nisn', '__CONFIG_MESSAGES__').single();
-      if (configMsg && configMsg.notes) {
+      const configMsgRow = studentsData.find(s => s.nisn === '__CONFIG_MESSAGES__');
+      if (configMsgRow && configMsgRow.notes) {
         try {
-          const parsed = JSON.parse(configMsg.notes);
+          const parsed = JSON.parse(configMsgRow.notes);
           setMsgLulus(parsed['LULUS'] || msgLulus);
           setMsgTidakLulus(parsed['TIDAK LULUS'] || msgTidakLulus);
           setMsgBelum(parsed['BELUM ADA PENGUMUMAN'] || msgBelum);
         } catch(e) {}
+      } else {
+        const storedMsg = localStorage.getItem('announcementMessages');
+        if (storedMsg) {
+          try {
+            const parsed = JSON.parse(storedMsg);
+            setMsgLulus(parsed['LULUS'] || msgLulus);
+            setMsgTidakLulus(parsed['TIDAK LULUS'] || msgTidakLulus);
+            setMsgBelum(parsed['BELUM ADA PENGUMUMAN'] || msgBelum);
+          } catch(e) {}
+        }
       }
     };
     fetchSettings();
     
-    if (isAuthenticated) {
-      fetchStudents();
-    }
+    if (isAuthenticated) fetchStudents();
 
     return () => window.removeEventListener('resize', handleResize);
   }, [isAuthenticated]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!password) {
-      setMessage('Password harus diisi!');
-      return;
-    }
-    setAuthLoading(true);
-    setMessage('');
+    if (!password) { setMessage('Password harus diisi!'); return; }
+    setAuthLoading(true); setMessage('');
 
     const inputHash = await hashPassword(password);
 
     if (inputHash === ADMIN_HASH) {
       sessionStorage.setItem('admin_session', ADMIN_HASH);
-      setIsAuthenticated(true);
-      setMessage('');
+      setIsAuthenticated(true); setMessage('');
     } else {
       setMessage('Password salah!');
     }
@@ -162,73 +147,29 @@ export default function Admin() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('admin_session');
-    setIsAuthenticated(false);
-    setPassword('');
-    navigate('/');
+    setIsAuthenticated(false); setPassword(''); navigate('/');
   };
 
-  const fetchStudents = async () => {
+  const fetchStudents = () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('students')
-      .select('*')
-      .neq('nisn', '__CONFIG_TIMER__')
-      .neq('nisn', '__CONFIG_MESSAGES__');
-
-    if (error) {
-      console.error('Error fetching students:', error);
-      setMessage('Gagal mengambil data siswa: ' + error.message);
-    } else {
-      const sorted = (data || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      setStudents(sorted);
-    }
+    const validStudents = studentsData.filter(s => s.nisn !== '__CONFIG_TIMER__' && s.nisn !== '__CONFIG_MESSAGES__');
+    const sorted = validStudents.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    setStudents(sorted);
     setLoading(false);
   };
 
-  const handleSaveSetting = async (e) => {
+  const handleSaveSetting = (e) => {
     e.preventDefault();
-    if (!datetime) {
-      setMessage('Tanggal dan waktu harus diisi!');
-      return;
-    }
-    
-    const configRow = {
-      nisn: '__CONFIG_TIMER__',
-      dob: '2000-01-01',
-      name: 'SYSTEM_CONFIG',
-      status: 'CONFIG',
-      notes: datetime
-    };
-
-    const configMsgRow = {
-      nisn: '__CONFIG_MESSAGES__',
-      dob: '2000-01-01',
-      name: 'SYSTEM_CONFIG',
-      status: 'CONFIG',
-      notes: JSON.stringify({
-        'LULUS': msgLulus,
-        'TIDAK LULUS': msgTidakLulus,
-        'BELUM ADA PENGUMUMAN': msgBelum
-      })
-    };
-
-    const { data: existing } = await supabase.from('students').select('id').eq('nisn', '__CONFIG_TIMER__').single();
-
-    if (existing) {
-      await supabase.from('students').update({ notes: datetime }).eq('id', existing.id);
-    } else {
-      await supabase.from('students').insert([configRow]);
-    }
-    
-    const { data: existingMsg } = await supabase.from('students').select('id').eq('nisn', '__CONFIG_MESSAGES__').single();
-    if (existingMsg) {
-      await supabase.from('students').update({ notes: configMsgRow.notes }).eq('id', existingMsg.id);
-    } else {
-      await supabase.from('students').insert([configMsgRow]);
-    }
+    if (!datetime) { setMessage('Tanggal dan waktu harus diisi!'); return; }
     
     localStorage.setItem('announcementTime', datetime);
-    setMessage('Berhasil! Pengaturan tersimpan secara Global!');
+    localStorage.setItem('announcementMessages', JSON.stringify({
+      'LULUS': msgLulus,
+      'TIDAK LULUS': msgTidakLulus,
+      'BELUM ADA PENGUMUMAN': msgBelum
+    }));
+    
+    setMessage('Pengaturan disimpan LOKAL (Mode JSON Read-Only Aktif)');
     setTimeout(() => setMessage(''), 5000);
   };
 

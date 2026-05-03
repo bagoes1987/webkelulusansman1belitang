@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, CalendarDays } from 'lucide-react';
 import Input from '../components/Input';
 import Button from '../components/Button';
-import { supabase } from '../lib/supabase';
+import studentsData from '../data/students.json';
 
 export default function Home() {
   const [nisn, setNisn] = useState('');
@@ -27,15 +27,15 @@ export default function Home() {
   useEffect(() => {
     let timer;
     const fetchAndStartTimer = async () => {
-      // Ambil waktu dari Supabase sebagai sumber kebenaran utama
-      const { data } = await supabase.from('students').select('*').eq('nisn', '__CONFIG_TIMER__').single();
+      // Cek dari JSON lokal atau localStorage
+      const configRow = studentsData.find(s => s.nisn === '__CONFIG_TIMER__');
       
       let announceDateString = null;
-      if (data && data.notes) {
-        announceDateString = data.notes;
-        localStorage.setItem('announcementTime', announceDateString); // cache lokal
+      if (configRow && configRow.notes) {
+        announceDateString = configRow.notes;
+        localStorage.setItem('announcementTime', announceDateString);
       } else {
-        announceDateString = localStorage.getItem('announcementTime');
+        announceDateString = localStorage.getItem('announcementTime') || '2026-05-02T15:00:00';
       }
 
       if (announceDateString) {
@@ -88,27 +88,21 @@ export default function Home() {
     // Gabungkan Tanggal Lahir (YYYY-MM-DD)
     const formattedDob = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 
-    // Query ke Supabase
-    const { data: students, error: apiError } = await supabase
-      .from('students')
-      .select('*')
-      .eq('nisn', nisn)
-      .eq('dob', formattedDob);
+    // Cari dari data JSON
+    const studentMatches = studentsData.filter(s => s.nisn === String(nisn) && s.dob === formattedDob);
+    const configMsgRow = studentsData.find(s => s.nisn === '__CONFIG_MESSAGES__');
 
-    const { data: configMsg } = await supabase
-      .from('students')
-      .select('*')
-      .eq('nisn', '__CONFIG_MESSAGES__')
-      .single();
-
-    if (apiError) {
-      setError('Terjadi kesalahan jaringan/database.');
-    } else if (students && students.length > 0) {
+    if (studentMatches.length > 0) {
       let customMessages = null;
-      if (configMsg && configMsg.notes) {
-        try { customMessages = JSON.parse(configMsg.notes); } catch(e) {}
+      if (configMsgRow && configMsgRow.notes) {
+        try { customMessages = JSON.parse(configMsgRow.notes); } catch(e) {}
+      } else {
+        const storedMsg = localStorage.getItem('announcementMessages');
+        if (storedMsg) {
+          try { customMessages = JSON.parse(storedMsg); } catch(e) {}
+        }
       }
-      navigate('/result', { state: { student: students[0], customMessages } });
+      navigate('/result', { state: { student: studentMatches[0], customMessages } });
     } else {
       setError('Data tidak ditemukan. Periksa NISN dan Tanggal Lahir Anda.');
     }
