@@ -433,9 +433,6 @@ export default function Admin() {
             </div>
             <h2 className="title" style={{ fontSize: '1.75rem', fontWeight: '900', letterSpacing: '-0.5px', marginBottom: '0.5rem' }}>Akses Admin</h2>
             <p style={{ color: 'var(--text-light)', opacity: 0.7, fontSize: '0.875rem', fontWeight: '500' }}>Sistem Kelulusan SMAN 1 Belitang</p>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.75rem', color: 'rgba(16, 185, 129, 0.7)', fontSize: '0.7rem', fontWeight: '600' }}>
-              <Lock size={12} /> Dilindungi Enkripsi SHA-256
-            </div>
           </div>
           
           <form onSubmit={handleLogin} className="scale-in" style={{ position: 'relative', zIndex: 1 }}>
