@@ -4,7 +4,7 @@ import {
   Clock, Home as HomeIcon, Lock, Users, Settings, 
   Plus, Trash2, Edit2, X, Check, ChevronDown, 
   FileSpreadsheet, Download, Upload, AlertCircle,
-  Search, CalendarDays
+  Search, CalendarDays, LogOut, Shield
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Input from '../components/Input';
@@ -14,7 +14,20 @@ import { supabase } from '../lib/supabase';
 export default function Admin() {
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const navigate = useNavigate();
+
+  // Hash SHA-256 dari password admin (password asli TIDAK tersimpan di kode)
+  const ADMIN_HASH = 'dc258833711f6f4da27982d9904bd7d22afff49835a60e27321edc59480ca563';
+
+  // Fungsi hash SHA-256 menggunakan Web Crypto API
+  const hashPassword = async (pwd) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pwd);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
 
   // Tabs state
   const [activeTab, setActiveTab] = useState('students'); // 'students' or 'settings'
@@ -22,6 +35,9 @@ export default function Admin() {
   // Settings State
   const [datetime, setDatetime] = useState('');
   const [message, setMessage] = useState('');
+  const [msgLulus, setMsgLulus] = useState('untuk pengambilan SKHU menunggu informasi dari TU SMAN 1 Belitang.');
+  const [msgTidakLulus, setMsgTidakLulus] = useState('Silakan hubungi pihak sekolah untuk informasi lebih lanjut.');
+  const [msgBelum, setMsgBelum] = useState('Pengumuman kelulusan Anda sedang diproses.');
 
   // Students State
   const [students, setStudents] = useState([]);
@@ -82,6 +98,15 @@ export default function Admin() {
   // --- Responsive State ---
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  // Cek sesi admin dari sessionStorage saat pertama kali load
+  useEffect(() => {
+    const session = sessionStorage.getItem('admin_session');
+    if (session === ADMIN_HASH) {
+      setIsAuthenticated(true);
+    }
+    setAuthLoading(false);
+  }, []);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
@@ -94,6 +119,16 @@ export default function Admin() {
         const storedTime = localStorage.getItem('announcementTime');
         if (storedTime) setDatetime(storedTime);
       }
+
+      const { data: configMsg } = await supabase.from('students').select('*').eq('nisn', '__CONFIG_MESSAGES__').single();
+      if (configMsg && configMsg.notes) {
+        try {
+          const parsed = JSON.parse(configMsg.notes);
+          setMsgLulus(parsed['LULUS'] || msgLulus);
+          setMsgTidakLulus(parsed['TIDAK LULUS'] || msgTidakLulus);
+          setMsgBelum(parsed['BELUM ADA PENGUMUMAN'] || msgBelum);
+        } catch(e) {}
+      }
     };
     fetchSettings();
     
@@ -104,14 +139,32 @@ export default function Admin() {
     return () => window.removeEventListener('resize', handleResize);
   }, [isAuthenticated]);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (password === 'admin123') {
+    if (!password) {
+      setMessage('Password harus diisi!');
+      return;
+    }
+    setAuthLoading(true);
+    setMessage('');
+
+    const inputHash = await hashPassword(password);
+
+    if (inputHash === ADMIN_HASH) {
+      sessionStorage.setItem('admin_session', ADMIN_HASH);
       setIsAuthenticated(true);
       setMessage('');
     } else {
       setMessage('Password salah!');
     }
+    setAuthLoading(false);
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('admin_session');
+    setIsAuthenticated(false);
+    setPassword('');
+    navigate('/');
   };
 
   const fetchStudents = async () => {
@@ -120,13 +173,14 @@ export default function Admin() {
       .from('students')
       .select('*')
       .neq('nisn', '__CONFIG_TIMER__')
-      .order('created_at', { ascending: false });
+      .neq('nisn', '__CONFIG_MESSAGES__');
 
     if (error) {
       console.error('Error fetching students:', error);
       setMessage('Gagal mengambil data siswa: ' + error.message);
     } else {
-      setStudents(data || []);
+      const sorted = (data || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setStudents(sorted);
     }
     setLoading(false);
   };
@@ -146,6 +200,18 @@ export default function Admin() {
       notes: datetime
     };
 
+    const configMsgRow = {
+      nisn: '__CONFIG_MESSAGES__',
+      dob: '2000-01-01',
+      name: 'SYSTEM_CONFIG',
+      status: 'CONFIG',
+      notes: JSON.stringify({
+        'LULUS': msgLulus,
+        'TIDAK LULUS': msgTidakLulus,
+        'BELUM ADA PENGUMUMAN': msgBelum
+      })
+    };
+
     const { data: existing } = await supabase.from('students').select('id').eq('nisn', '__CONFIG_TIMER__').single();
 
     if (existing) {
@@ -154,24 +220,21 @@ export default function Admin() {
       await supabase.from('students').insert([configRow]);
     }
     
+    const { data: existingMsg } = await supabase.from('students').select('id').eq('nisn', '__CONFIG_MESSAGES__').single();
+    if (existingMsg) {
+      await supabase.from('students').update({ notes: configMsgRow.notes }).eq('id', existingMsg.id);
+    } else {
+      await supabase.from('students').insert([configMsgRow]);
+    }
+    
     localStorage.setItem('announcementTime', datetime);
-    setMessage('Berhasil! Waktu pengumuman tersimpan secara Global!');
+    setMessage('Berhasil! Pengaturan tersimpan secara Global!');
     setTimeout(() => setMessage(''), 5000);
   };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    
-    if (name === 'status') {
-      const defaultNotes = 'untuk pengambilan SKHU menunggu informasi dari TU SMAN 1 Belitang.';
-      setFormData(prev => ({ 
-        ...prev, 
-        status: value,
-        notes: defaultNotes
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleResetForm = () => {
@@ -339,6 +402,18 @@ export default function Admin() {
     reader.readAsBinaryString(file);
   };
 
+  // Loading state saat cek sesi
+  if (authLoading && !isAuthenticated) {
+    return (
+      <div className="flex-center" style={{ minHeight: '80vh', padding: '1rem' }}>
+        <div className="glass-container page-fade-in" style={{ maxWidth: '420px', width: '100%', padding: '3rem 2.5rem', borderRadius: '32px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
+          <div className="loader mb-4" style={{ margin: '0 auto' }}></div>
+          <p style={{ color: 'var(--text-light)', fontSize: '0.9rem', fontWeight: '600' }}>Memeriksa sesi autentikasi...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="flex-center" style={{ minHeight: '80vh', padding: '1rem' }}>
@@ -347,17 +422,20 @@ export default function Admin() {
           {/* Decorative Glow */}
           <div style={{ position: 'absolute', top: '-100px', right: '-100px', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(22, 66, 138, 0.15) 0%, transparent 70%)', filter: 'blur(40px)', zIndex: 0 }}></div>
 
-          <div className="text-center" style={{ position: 'relative', zIndex: 1, marginBottom: '3.5rem' }}>
+          <div className="text-center" style={{ position: 'relative', zIndex: 1, marginBottom: '2.5rem' }}>
             <div className="flex-center mb-6">
               <div style={{ position: 'relative' }}>
                 <div style={{ position: 'absolute', inset: '-15px', background: 'rgba(22, 66, 138, 0.2)', filter: 'blur(20px)', borderRadius: '50%', zIndex: -1 }}></div>
                 <div style={{ background: 'linear-gradient(135deg, rgba(22, 66, 138, 0.2) 0%, rgba(22, 66, 138, 0.1) 100%)', padding: '1.25rem', borderRadius: '20px', border: '1px solid rgba(22, 66, 138, 0.3)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}>
-                  <Lock size={40} color="var(--primary-color)" />
+                  <Shield size={40} color="var(--primary-color)" />
                 </div>
               </div>
             </div>
             <h2 className="title" style={{ fontSize: '1.75rem', fontWeight: '900', letterSpacing: '-0.5px', marginBottom: '0.5rem' }}>Akses Admin</h2>
             <p style={{ color: 'var(--text-light)', opacity: 0.7, fontSize: '0.875rem', fontWeight: '500' }}>Sistem Kelulusan SMAN 1 Belitang</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.75rem', color: 'rgba(16, 185, 129, 0.7)', fontSize: '0.7rem', fontWeight: '600' }}>
+              <Lock size={12} /> Dilindungi Enkripsi SHA-256
+            </div>
           </div>
           
           <form onSubmit={handleLogin} className="scale-in" style={{ position: 'relative', zIndex: 1 }}>
@@ -369,7 +447,7 @@ export default function Admin() {
             
             <div style={{ marginBottom: '1.5rem' }}>
               <Input 
-                label="Masukan Password" 
+                label="Password" 
                 type="password"
                 placeholder="Masukkan kata sandi"
                 icon={Lock}
@@ -379,8 +457,8 @@ export default function Admin() {
             </div>
 
             <div className="mt-8" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <Button type="submit" style={{ padding: '1rem', borderRadius: '16px', fontSize: '1rem', fontWeight: '800', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)' }}>
-                Masuk ke Dasbor
+              <Button type="submit" disabled={authLoading} style={{ padding: '1rem', borderRadius: '16px', fontSize: '1rem', fontWeight: '800', boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4)', opacity: authLoading ? 0.7 : 1 }}>
+                {authLoading ? 'Memverifikasi...' : 'Masuk ke Dasbor'}
               </Button>
               
               <button 
@@ -443,8 +521,8 @@ export default function Admin() {
           <h2 className="title" style={{ fontSize: isMobile ? '1.25rem' : '2rem', margin: 0, textAlign: 'left', fontWeight: '900', letterSpacing: '-0.5px' }}>Dasbor Admin</h2>
           <p style={{ color: 'var(--text-light)', fontSize: isMobile ? '0.7rem' : '1rem', marginTop: '0.2rem', opacity: 0.8 }}>Pengelolaan Kelulusan 2026</p>
         </div>
-        <button onClick={() => navigate('/')} style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.2)', padding: isMobile ? '0.5rem 1rem' : '0.75rem 1.75rem', borderRadius: '12px', fontSize: isMobile ? '0.75rem' : '0.9rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>
-          {isMobile ? <X size={18} /> : 'Keluar Dasbor'}
+        <button onClick={handleLogout} style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.2)', padding: isMobile ? '0.5rem 1rem' : '0.75rem 1.75rem', borderRadius: '12px', fontSize: isMobile ? '0.75rem' : '0.9rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <LogOut size={isMobile ? 16 : 18} /> {isMobile ? '' : 'Logout'}
         </button>
       </div>
 
@@ -492,7 +570,27 @@ export default function Admin() {
                   value={datetime}
                   onChange={(e) => setDatetime(e.target.value)}
                 />
-                <div className="mt-8"><Button type="submit" style={{ padding: '1rem' }}>Update Waktu</Button></div>
+
+                <div className="mt-8 mb-4">
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: '800', marginBottom: '1rem', color: 'white' }}>Pesan & Instruksi Kelulusan</h3>
+                </div>
+
+                <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="input-label" style={{ color: '#10b981' }}>Pesan LULUS</label>
+                  <textarea value={msgLulus} onChange={(e) => setMsgLulus(e.target.value)} className="input-field" style={{ minHeight: '80px', padding: '1rem', resize: 'none' }}></textarea>
+                </div>
+
+                <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="input-label" style={{ color: '#f87171' }}>Pesan TIDAK LULUS</label>
+                  <textarea value={msgTidakLulus} onChange={(e) => setMsgTidakLulus(e.target.value)} className="input-field" style={{ minHeight: '80px', padding: '1rem', resize: 'none' }}></textarea>
+                </div>
+
+                <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="input-label" style={{ color: '#f59e0b' }}>Pesan BELUM ADA PENGUMUMAN</label>
+                  <textarea value={msgBelum} onChange={(e) => setMsgBelum(e.target.value)} className="input-field" style={{ minHeight: '80px', padding: '1rem', resize: 'none' }}></textarea>
+                </div>
+
+                <div className="mt-8"><Button type="submit" style={{ padding: '1rem' }}>Update Pengaturan</Button></div>
               </form>
             </div>
           </div>
@@ -624,8 +722,8 @@ export default function Admin() {
                             borderRadius: '8px', 
                             fontSize: '0.65rem', 
                             fontWeight: '900',
-                            background: student.status === 'LULUS' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                            color: student.status === 'LULUS' ? '#10b981' : '#f87171',
+                            background: student.status === 'LULUS' ? 'rgba(16, 185, 129, 0.15)' : student.status === 'TIDAK LULUS' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                            color: student.status === 'LULUS' ? '#10b981' : student.status === 'TIDAK LULUS' ? '#f87171' : '#f59e0b',
                             letterSpacing: '0.5px',
                             whiteSpace: 'nowrap'
                           }}>
@@ -682,8 +780,8 @@ export default function Admin() {
                                 borderRadius: '10px', 
                                 fontSize: '0.75rem', 
                                 fontWeight: '800',
-                                background: student.status === 'LULUS' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                color: student.status === 'LULUS' ? '#10b981' : '#f87171',
+                                background: student.status === 'LULUS' ? 'rgba(16, 185, 129, 0.1)' : student.status === 'TIDAK LULUS' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                color: student.status === 'LULUS' ? '#10b981' : student.status === 'TIDAK LULUS' ? '#f87171' : '#f59e0b',
                                 letterSpacing: '0.5px'
                               }}>
                                 {student.status}
@@ -881,7 +979,7 @@ export default function Admin() {
                   />
                 </div>
 
-                <div className="input-group" style={{ marginBottom: '1.75rem' }}>
+                <div className="input-group" style={{ marginBottom: '2.5rem' }}>
                   <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <div style={{ color: 'var(--primary-color)' }}><ChevronDown size={16} /></div> Status Kelulusan Akhir
                   </label>
@@ -889,18 +987,12 @@ export default function Admin() {
                     <select name="status" value={formData.status} onChange={handleInputChange} className="input-field" style={{ paddingLeft: '1.25rem', appearance: 'none', cursor: 'pointer', fontWeight: '700', fontSize: '1rem', border: '1px solid rgba(255,255,255,0.12)' }}>
                       <option value="LULUS">✅ DINYATAKAN LULUS</option>
                       <option value="TIDAK LULUS">❌ TIDAK LULUS</option>
+                      <option value="BELUM ADA PENGUMUMAN">⏳ BELUM ADA PENGUMUMAN</option>
                     </select>
                     <div style={{ position: 'absolute', right: '1.25rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#94a3b8' }}>
                       <ChevronDown size={20} />
                     </div>
                   </div>
-                </div>
-
-                <div className="input-group" style={{ marginBottom: '2.5rem' }}>
-                  <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ color: 'var(--primary-color)' }}><Edit2 size={16} /></div> Instruksi & Pesan Khusus (SKHU)
-                  </label>
-                  <textarea name="notes" value={formData.notes} onChange={handleInputChange} className="input-field" style={{ paddingLeft: '1.25rem', minHeight: '110px', paddingTop: '1rem', fontSize: '0.9rem', lineHeight: 1.6, resize: 'none', border: '1px solid rgba(255,255,255,0.12)' }} placeholder="Tuliskan detail waktu atau tempat pengambilan SKHU..."></textarea>
                 </div>
 
                 <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>

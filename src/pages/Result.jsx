@@ -21,7 +21,7 @@ export default function Result() {
 
   if (!state?.student) return null;
 
-  const { student } = state;
+  const { student, customMessages } = state;
   const isLulus = student.status === 'LULUS';
 
   // Format date correctly if it's yyyy-mm-dd to dd/mm/yyyy
@@ -37,7 +37,49 @@ export default function Result() {
     }
   };
 
-  const qrPayload = `VERIFIKASI ASLI:\nDinyatakan bahwa [${student.name}] dengan NISN [${student.nisn}] adalah resmi ${student.status} dari SMAN 1 Belitang.`;
+  const qrPayload = student.status === 'BELUM ADA PENGUMUMAN' 
+    ? `VERIFIKASI ASLI:\nStatus kelulusan siswa [${student.name}] dengan NISN [${student.nisn}] saat ini sedang dalam pertimbangan SMAN 1 Belitang.`
+    : `VERIFIKASI ASLI:\nDinyatakan bahwa [${student.name}] dengan NISN [${student.nisn}] adalah resmi ${student.status} dari SMAN 1 Belitang.`;
+
+  if (student.status === 'BELUM ADA PENGUMUMAN') {
+    const belumMsg = customMessages?.['BELUM ADA PENGUMUMAN'] || 'Pengumuman kelulusan Anda sedang diproses. Silahkan cek beberapa saat lagi.';
+    
+    return (
+      <div className="page-fade-in" style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.6)', background: '#212529', position: 'relative', zIndex: 10, padding: '4rem 1.5rem', textAlign: 'center' }}>
+        <h2 style={{ color: '#f59e0b', marginBottom: '1rem', fontWeight: '900', letterSpacing: '1px' }}>PEMBERITAHUAN</h2>
+        <div style={{ fontSize: '1.2rem', color: 'white', fontWeight: '700', marginBottom: '1rem', textTransform: 'uppercase' }}>
+          BELUM ADA PENGUMUMAN UNTUK ANDA
+        </div>
+        <div className="custom-scroll" style={{ 
+          color: '#adb5bd', 
+          fontSize: '0.9rem', 
+          marginBottom: '3rem', 
+          lineHeight: 1.5, 
+          padding: '0 1rem', 
+          whiteSpace: 'pre-wrap', 
+          maxHeight: '120px', 
+          overflowY: 'auto' 
+        }}>
+          {belumMsg}
+        </div>
+        <button 
+           onClick={() => navigate('/')} 
+           style={{ 
+             background: 'linear-gradient(135deg, #495057 0%, #343a40 100%)', 
+             color: 'white', 
+             padding: '0.8rem 1.5rem', 
+             borderRadius: '8px', 
+             border: 'none', 
+             fontWeight: 'bold',
+             cursor: 'pointer',
+             boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
+           }}
+        >
+          KEMBALI KE BERANDA
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="page-fade-in" style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.6)', background: '#212529', position: 'relative', zIndex: 10 }}>
@@ -122,10 +164,25 @@ export default function Result() {
         <div style={{ fontSize: '0.9rem', fontWeight: '800', color: '#212529', marginBottom: '0.5rem' }}>
           Silakan lakukan instruksi berikut:
         </div>
-        <div style={{ fontSize: '0.75rem', color: '#495057', lineHeight: 1.5, fontWeight: '500' }}>
-          {(!student.notes || student.notes.includes('Mohon maaf') || student.notes.includes('Selamat! Anda dinyatakan LULUS')) 
-            ? 'untuk pengambilan SKHU menunggu informasi dari TU SMAN 1 Belitang.' 
-            : student.notes}
+        <div className="custom-scroll" style={{ 
+          fontSize: '0.8rem', 
+          color: '#495057', 
+          lineHeight: 1.6, 
+          fontWeight: '500', 
+          whiteSpace: 'pre-wrap', 
+          maxHeight: '130px', 
+          overflowY: 'auto', 
+          padding: '0.5rem', 
+          background: '#f8f9fa', 
+          borderRadius: '8px', 
+          border: '1px solid #e9ecef',
+          marginBottom: '0.75rem'
+        }}>
+          {customMessages?.[student.status] 
+            ? customMessages[student.status]
+            : (!student.notes || student.notes.includes('Mohon maaf') || student.notes.includes('Selamat! Anda dinyatakan LULUS') || student.notes === 'CONFIG') 
+              ? 'untuk pengambilan SKHU menunggu informasi dari TU SMAN 1 Belitang.' 
+              : student.notes}
         </div>
         <button 
            onClick={() => navigate('/')} 

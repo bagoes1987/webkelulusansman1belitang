@@ -95,10 +95,20 @@ export default function Home() {
       .eq('nisn', nisn)
       .eq('dob', formattedDob);
 
+    const { data: configMsg } = await supabase
+      .from('students')
+      .select('*')
+      .eq('nisn', '__CONFIG_MESSAGES__')
+      .single();
+
     if (apiError) {
       setError('Terjadi kesalahan jaringan/database.');
     } else if (students && students.length > 0) {
-      navigate('/result', { state: { student: students[0] } });
+      let customMessages = null;
+      if (configMsg && configMsg.notes) {
+        try { customMessages = JSON.parse(configMsg.notes); } catch(e) {}
+      }
+      navigate('/result', { state: { student: students[0], customMessages } });
     } else {
       setError('Data tidak ditemukan. Periksa NISN dan Tanggal Lahir Anda.');
     }
