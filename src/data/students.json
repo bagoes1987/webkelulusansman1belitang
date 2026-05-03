@@ -1,5 +1,19 @@
 [
   {
+    "nisn": "__CONFIG_TIMER__",
+    "dob": "2000-01-01",
+    "name": "SYSTEM_CONFIG",
+    "status": "CONFIG",
+    "notes": "2026-05-03T08:50:00"
+  },
+  {
+    "nisn": "__CONFIG_MESSAGES__",
+    "dob": "2000-01-01",
+    "name": "SYSTEM_CONFIG",
+    "status": "CONFIG",
+    "notes": "{\"LULUS\":\"Pengambilan SKL dimulai pada tanggal 5 April 2026 pada jam kerja. Siswa diminta untuk memfotokopi SKL secara mandiri maksimal 5 lembar untuk dilegalisir. Hasil legalisir dapat diambil pada hari berikutnya.\",\"TIDAK LULUS\":\"Silakan hubungi pihak sekolah untuk informasi lebih lanjut.\",\"BELUM ADA PENGUMUMAN\":\"Pengumuman kelulusan Anda sedang diproses.\"}"
+  },
+  {
     "nisn": "0082756141",
     "name": "ARUM ZULYA MAWARNI",
     "dob": "2008-07-17",
